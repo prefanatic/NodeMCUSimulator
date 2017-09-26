@@ -37,7 +37,6 @@ public class Main extends Application {
         MainController mainController = loader.getController();
 
         Globals globals = JsePlatform.debugGlobals();
-        String initFile = "init.lua";
 
         globals.load(new Http());
         globals.load(new Wifi());
@@ -51,6 +50,12 @@ public class Main extends Application {
         // JSON Module implemented in Lua - as it's rather difficult to convert from a LuaTable to Map and vice versa
         LuaTable cjson = (LuaTable) processScript(getClass().getResourceAsStream("/Json.lua"), "cjson.lua", globals);
         globals.set("cjson", cjson);
+
+        // Pick the init file from our parameters, if available.  Otherwise, default to init.lua
+        String initFile = "init.lua";
+        if (getParameters().getRaw().size() > 0) {
+            initFile = getParameters().getRaw().get(0);
+        }
 
         processScript(new FileInputStream(initFile), initFile, globals);
 
