@@ -57,6 +57,7 @@ public class Wifi extends TwoArgFunction {
         sta.set("status", zeroArgFunction(this::getStationStatus));
         sta.set("config", varargsFunction(this::setStationConfig));
         sta.set("connect", zeroArgFunction(this::stationConnect));
+        sta.set("gethostname", zeroArgFunction(this::getHostname));
         wifi.set("sta", sta);
 
         // Eventmon sub-object
@@ -88,6 +89,10 @@ public class Wifi extends TwoArgFunction {
         table.set("IP", ip);
 
         callback.call(table);
+    }
+
+    private String getHostname() {
+        return "Mock";
     }
 
     private Integer getStationStatus() {
