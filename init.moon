@@ -11,7 +11,8 @@ MQTT_TOPICS = {
 	OTA_PART: "/ota/" .. wifi.sta.gethostname() .. "/part",
 	OTA_END: "/ota/" .. wifi.sta.gethostname() .. "/end",
 
-	REGISTER: "/regsiter"
+	REGISTER: "/register",
+	HEARTBEAT: "/heartbeat"
 }
 
 IMMEDIATE_STARTUP = true
@@ -53,6 +54,7 @@ onMqttConnected = (client) ->
 	payload = "TODO"
 	mqttClient\publish MQTT_TOPICS.REGISTER, payload, 2, false
 	mqttClient\subscribe MQTT_TOPICS.OTA_START, 2
+	mqttClient\subscribe MQTT_TOPICS.HEARTBEAT, 0
 
 onMqttMessage = (client, topic, data) ->
 	print "Message :: " .. topic .. " -> " .. tostring(data)
@@ -96,6 +98,12 @@ onMqttMessage = (client, topic, data) ->
 		activeOtaDetails.fileHandle\close()
 
 		isOtaActive = false
+
+	if topic == MQTT_TOPICS.HEARTBEAT
+		print "Heartbeat requested."
+
+		payload = "TODO"
+		mqttClient\publish MQTT_TOPICS.REGISTER, payload, 2, false
 
 
 wifiConnectEvent = (T) -> 
