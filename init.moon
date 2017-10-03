@@ -1,8 +1,13 @@
-SSID = "test"
-PASSWORD = "test"
+INITVERSION = 2
+
+-- TODO: Description should exist in the application lua.
+DESCRIPTION = "I am a test device."
+
+SSID = "WILDROUTER"
+PASSWORD = "5ABAC16C9D"
 
 MQTT_ID = "DasLaundryMachine"
-MQTT_HOST = "localhost"
+MQTT_HOST = "misterman"
 MQTT_PORT = 1883
 MQTT_KEEP_ALIVE = 120
 
@@ -26,6 +31,8 @@ activeOtaDetails = { -- Container for active OTA information.
 
 -- Forward declare all of our methods.
 local *
+local mqttClient
+disconnect_ct = 0
 
 -- @function startup
 -- @description Executes the application.lua
@@ -47,26 +54,52 @@ mqttRegisterWithCommunicator = ->
 	mqttClient\on "message", onMqttMessage
 	mqttClient\connect MQTT_HOST, MQTT_PORT, false, true
 
+-- @function registerNode
+-- @description Registers this node with Communicator
+registerNode = ->
+	-- Define registration payload
+	payload = {
+		-- Identifier for the node
+        id: wifi.sta.gethostname(),
+        -- Node's current time
+        time: tmr.now(),
+        -- Description of what this node provides
+        description: DESCRIPTION,
+        -- Node's version
+        initVersion: INITVERSION
+    }
+
+    success, json = pcall sjson.encode, payload
+    if not success
+    	print "Unable to encode registration payload."
+    	return
+
+	mqttClient\publish MQTT_TOPICS.REGISTER, json, 2, 0
+
+
 onMqttConnected = (client) ->
 	print "Connected to " .. MQTT_HOST
 
 	-- Register this node, and listen to any OTA requests.
-	payload = "TODO"
-	mqttClient\publish MQTT_TOPICS.REGISTER, payload, 2, false
-	mqttClient\subscribe MQTT_TOPICS.OTA_START, 2
-	mqttClient\subscribe MQTT_TOPICS.HEARTBEAT, 0
+	registerNode!
+
+	subscriptions = {
+		[MQTT_TOPICS.OTA_START]: 2,
+		[MQTT_TOPICS.OTA_PART]: 2,
+		[MQTT_TOPICS.OTA_END]: 2,
+		[MQTT_TOPICS.HEARTBEAT]: 0
+	}
+	mqttClient\subscribe subscriptions
+
 
 onMqttMessage = (client, topic, data) ->
 	print "Message :: " .. topic .. " -> " .. tostring(data)
 
 	-- Check to see if this is an OTA request.
 	if topic == MQTT_TOPICS.OTA_START
-		-- TODO: Parse the OTA request.
-		request = {
-			fileName: "application.lua",
-			parts: 300 -- How many batches are coming in.
-		}
+		request = sjson.decode data
 
+		print "OTA START :: " .. request.fileName .. "(" .. request.parts .. ")"
 		isOtaActive = true
 		activeOtaDetails = request
 		activeOtaDetails.fileHandle = file.open request.fileName, "w+"
@@ -81,12 +114,10 @@ onMqttMessage = (client, topic, data) ->
 			return
 
 		-- TODO: Parse the OTA part.
-		part = {
-			number: 1,
-			contents: "print \"Hello World!\""
-		}
+		part = sjson.decode data
+		print "OTA PART :: " .. part.part .. "/" .. activeOtaDetails.parts
 
-		activeOtaDetails.fileHandle\write part.contents
+		activeOtaDetails.fileHandle\writeline part.content
 
 	if topic == MQTT_TOPICS.OTA_END
 		if not isOtaActive
@@ -97,13 +128,14 @@ onMqttMessage = (client, topic, data) ->
 		activeOtaDetails.fileHandle\flush()
 		activeOtaDetails.fileHandle\close()
 
+		print "OTA END :: Success write to " .. activeOtaDetails.fileName
+
 		isOtaActive = false
 
 	if topic == MQTT_TOPICS.HEARTBEAT
 		print "Heartbeat requested."
 
-		payload = "TODO"
-		mqttClient\publish MQTT_TOPICS.REGISTER, payload, 2, false
+		registerNode!
 
 
 wifiConnectEvent = (T) -> 
