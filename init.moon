@@ -1,4 +1,4 @@
-INITVERSION = 2
+INITVERSION = 4
 
 -- TODO: Description should exist in the application lua.
 DESCRIPTION = "I am a test device."
@@ -17,10 +17,17 @@ MQTT_TOPICS = {
 	OTA_END: "/ota/" .. wifi.sta.gethostname() .. "/end",
 
 	REGISTER: "/register",
-	HEARTBEAT: "/heartbeat"
+	HEARTBEAT: "/heartbeat",
+
+	DATA: "/data"
 }
 
 IMMEDIATE_STARTUP = true
+
+-- Accelerometer Config
+I2C_DEVICE_ID = 0
+SDA_PORT = 2
+SCL_PORT = 1
 
 -- State values
 isOtaActive = false -- Determines if an OTA is currently active.
@@ -37,13 +44,44 @@ disconnect_ct = 0
 -- @function startup
 -- @description Executes the application.lua
 startup = ->
-	if file.open "init.lua" == nil
-		print "init.lua is missing!"
-	else
-		print "Running."
-		file.close "init.lua"
+		i2c.setup I2C_DEVICE_ID, SDA_PORT, SCL_PORT, i2c.SLOW
 
-		-- TODO: Execute application.
+		for i = 0, 127
+			d = string.byte readDeviceRegistry i, 0
+			if d == 0
+				print "Device found: " .. string.format "%02X", i
+
+
+		adxl345.setup()
+
+		timer = tmr.create!
+		timer\alarm 500, tmr.ALARM_AUTO, readAccelerometerData
+
+readAccelerometerData = ->
+	_x, _y, _z = adxl345.read()
+	payload = x: _x, y: _y, z: _z
+
+    success, json = pcall sjson.encode, payload
+    if not success
+    	print "Unable to encode payload."
+    	return
+
+	mqttClient\publish MQTT_TOPICS.DATA, json, 0, 0
+	print string.format "X: %d, Y: %d, Z: %d", _x, _y, _z
+
+
+readDeviceRegistry = (deviceAddress, registryAddress) ->
+	i2c.start I2C_DEVICE_ID
+	i2c.address I2C_DEVICE_ID, deviceAddress, i2c.TRANSMITTER
+	i2c.write I2C_DEVICE_ID, registryAddress
+	i2c.stop I2C_DEVICE_ID
+	i2c.start I2C_DEVICE_ID
+	i2c.address I2C_DEVICE_ID, deviceAddress, i2c.RECEIVER
+
+	data = i2c.read I2C_DEVICE_ID, 1
+	i2c.stop I2C_DEVICE_ID
+
+	data
 
 
 -- @function mqttRegisterWithCommunicator
@@ -90,6 +128,9 @@ onMqttConnected = (client) ->
 		[MQTT_TOPICS.HEARTBEAT]: 0
 	}
 	mqttClient\subscribe subscriptions
+
+	-- TODO: We should wait until we get an OK from communicator before starting.
+	startup()
 
 
 onMqttMessage = (client, topic, data) ->
