@@ -1,4 +1,4 @@
-INITVERSION = 4
+INITVERSION = 5
 
 -- TODO: Description should exist in the application lua.
 DESCRIPTION = "I am a test device."
@@ -47,7 +47,7 @@ startup = ->
 		i2c.setup I2C_DEVICE_ID, SDA_PORT, SCL_PORT, i2c.SLOW
 
 		for i = 0, 127
-			d = string.byte readDeviceRegistry i, 0
+			d = string.byte i2cRead i, 0
 			if d == 0
 				print "Device found: " .. string.format "%02X", i
 
@@ -58,19 +58,22 @@ startup = ->
 		timer\alarm 500, tmr.ALARM_AUTO, readAccelerometerData
 
 readAccelerometerData = ->
-	_x, _y, _z = adxl345.read()
-	payload = x: _x, y: _y, z: _z
+	x = i2cRead 0x53, 0x32, 2
+	print string.format "%02X", x
 
-    success, json = pcall sjson.encode, payload
-    if not success
-    	print "Unable to encode payload."
-    	return
+	--_x, _y, _z = adxl345.read()
+	--payload = x: _x, y: _y, z: _z
 
-	mqttClient\publish MQTT_TOPICS.DATA, json, 0, 0
-	print string.format "X: %d, Y: %d, Z: %d", _x, _y, _z
+    --success, json = pcall sjson.encode, payload
+    --if not success
+    --	print "Unable to encode payload."
+    --	return
+
+	--mqttClient\publish MQTT_TOPICS.DATA, json, 0, 0
+	--print string.format "X: %d, Y: %d, Z: %d", _x, _y, _z
 
 
-readDeviceRegistry = (deviceAddress, registryAddress) ->
+i2cRead = (deviceAddress, registryAddress, bytes=1) ->
 	i2c.start I2C_DEVICE_ID
 	i2c.address I2C_DEVICE_ID, deviceAddress, i2c.TRANSMITTER
 	i2c.write I2C_DEVICE_ID, registryAddress
@@ -78,11 +81,10 @@ readDeviceRegistry = (deviceAddress, registryAddress) ->
 	i2c.start I2C_DEVICE_ID
 	i2c.address I2C_DEVICE_ID, deviceAddress, i2c.RECEIVER
 
-	data = i2c.read I2C_DEVICE_ID, 1
+    data = i2c.read I2C_DEVICE_ID, bytes
 	i2c.stop I2C_DEVICE_ID
 
 	data
-
 
 -- @function mqttRegisterWithCommunicator
 -- @description Begins the process to register itself with the Communicator over MQTT.

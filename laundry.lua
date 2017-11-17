@@ -12,20 +12,65 @@ local TRIG_TYPE = "down"
 local MQTT_ID = "DasLaundyMachine"
 local KEEP_ALIVE = 120
 
-local message = null
+local mqttClient = null
+local mqttConnected = false
+
+local TOPIC_REGISTER = "/register"
+local TOPIC_OTA = "/ota/" .. wifi.sta.gethostname()
+
+local ERROR = 0
+local INFO = 1
+local log = function(level, msg) end
 
 local function onLaundryTriggered(level, pulse)
     print("Hello the laundry is done.")
 
-    message:publish("laundry/fin", "yep.", 0)
+    mqttClient:publish("laundry/fin", "yep.", 0)
 end
 
 local function onMqttConnected(client)
-    print("Hello client: " .. client)
+    mqttConnected = true
+    log(INFO, "Hello client: " .. tostring(client))
+
+    -- Build a registration payload.
+    local payload = {
+        id = wifi.sta.gethostname(),
+        time = tmr.now()
+    }
+
+    local success, json = pcall(sjson.encode, payload)
+    if (not success) then
+        log(ERROR, "Unable to encode registration payload.")
+        return
+    end
+
+    mqttClient:publish(TOPIC_REGISTER, json, 0, 0)
+    mqttClient:subscribe(TOPIC_OTA, 2)
+end
+
+local function performOta(fileName, contents)
+    local file = file.open(fileName, "w")
+    if not file then log(ERROR, "Unable to perform OTA.") return end
+
+    file:write(contents)
+    file:close()
 end
 
 local function onMessage(client, topic, data)
-    print("Message received on topic: " .. topic .. "\nData: " .. data);
+    log(INFO, "Message received on topic: " .. topic .. "\nData: " .. data);
+
+    if (topic == TOPIC_OTA) then
+        log(INFO, tostring(data))
+        local otaWrite = sjson.decode(data)
+        performOta(otaWrite.fileName, otaWrite.content)
+    end
+end
+
+log = function(level, m)
+    print(m)
+
+    if (mqttClient == null or not mqttConnected) then return end
+    mqttClient:publish("/log", m, 0, 0)
 end
 
 local function main()
@@ -35,10 +80,10 @@ local function main()
     gpio.mode(PIN, gpio.INT)
     gpio.trig(PIN, TRIG_TYPE, onLaundryTriggered)
 
-    message = mqtt.Client(MQTT_ID, KEEP_ALIVE)
-    message:on("connect", onMqttConnected)
-    message:on("message", onMessage)
-    message:connect("test.mosquitto.org", 1883, false, true)
-
+    mqttClient = mqtt.Client(MQTT_ID, KEEP_ALIVE)
+    mqttClient:on("connect", onMqttConnected)
+    mqttClient:on("message", onMessage)
+    mqttClient:connect("192.168.1.210", 1883, false, true)
 end
+
 main()
